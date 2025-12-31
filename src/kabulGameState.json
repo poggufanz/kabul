@@ -1,0 +1,38 @@
+{
+  "players": [
+    {
+      "id": "player1",
+      "name": "Player 1",
+      "hand": [],
+      "hasCalledKabul": false
+    },
+    {
+      "id": "player2",
+      "name": "Player 2",
+      "hand": [],
+      "hasCalledKabul": false
+    }
+  ],
+  "deck": [
+    "Joker", "Joker",
+    "Red King", "Red King",
+    "K♠", "K♣",
+    "Q♥", "Q♦", "Q♠", "Q♣",
+    "J♥", "J♦", "J♠", "J♣",
+    "10♥", "10♦", "10♠", "10♣",
+    "9♥", "9♦", "9♠", "9♣",
+    "8♥", "8♦", "8♠", "8♣",
+    "7♥", "7♦", "7♠", "7♣",
+    "6♥", "6♦", "6♠", "6♣",
+    "5♥", "5♦", "5♠", "5♣",
+    "4♥", "4♦", "4♠", "4♣",
+    "3♥", "3♦", "3♠", "3♣",
+    "2♥", "2♦", "2♠", "2♣",
+    "A♥", "A♦", "A♠", "A♣"
+  ],
+  "discardPile": [],
+  "faceUpCard": null,
+  "currentPlayerIndex": 0,
+  "gameEnded": false,
+  "winner": null
+}
