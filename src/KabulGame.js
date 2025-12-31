@@ -578,7 +578,10 @@ class KabulGame {
         this.state.kabulCaller = playerId;
         this.state.finalTurnsRemaining = this.state.turnOrder.length - 1;
 
-        this._nextTurn();
+        // Advance to next player WITHOUT decrementing finalTurnsRemaining
+        // (the decrement happens when each player completes their final turn)
+        this.state.currentTurnIndex =
+            (this.state.currentTurnIndex + 1) % this.state.turnOrder.length;
 
         return { success: true, message: 'KABUL! Other players get 1 final turn.' };
     }
