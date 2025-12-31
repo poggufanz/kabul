@@ -281,6 +281,63 @@ const GameTable = ({
                                 />
                             </div>
                         )}
+
+                        {/* Swap Preview (Q/K See & Swap - shows BOTH cards) */}
+                        {myPrivate?.swapPreview && turnPhase === 'CONFIRMING_SWAP' && (
+                            <div className="mt-4 flex flex-col items-center gap-3">
+                                <span className="text-yellow-400 text-xs font-bold uppercase">Confirm Swap?</span>
+                                <div className="flex items-center gap-4">
+                                    {/* My Card */}
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="text-white/60 text-[10px] uppercase">Your Card</span>
+                                        <Card
+                                            rank={myPrivate.swapPreview.ownCard.rank}
+                                            suit={myPrivate.swapPreview.ownCard.suit}
+                                            size="md"
+                                            isSelected={true}
+                                        />
+                                        <span className="text-white text-xs font-bold">
+                                            {myPrivate.swapPreview.ownCard.value} pts
+                                        </span>
+                                    </div>
+
+                                    {/* Swap Arrow */}
+                                    <div className="flex flex-col items-center">
+                                        <span className="material-symbols-outlined text-primary text-3xl">swap_horiz</span>
+                                    </div>
+
+                                    {/* Target Card */}
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="text-white/60 text-[10px] uppercase">Their Card</span>
+                                        <Card
+                                            rank={myPrivate.swapPreview.targetCard.rank}
+                                            suit={myPrivate.swapPreview.targetCard.suit}
+                                            size="md"
+                                            isSelected={true}
+                                        />
+                                        <span className="text-white text-xs font-bold">
+                                            {myPrivate.swapPreview.targetCard.value} pts
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 mt-2">
+                                    <button
+                                        onClick={onConfirmSwap}
+                                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">check</span>
+                                        Swap
+                                    </button>
+                                    <button
+                                        onClick={onSkipAbility}
+                                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center gap-1"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">close</span>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* RIGHT OPPONENT */}

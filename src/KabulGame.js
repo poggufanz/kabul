@@ -689,4 +689,4 @@ class KabulGame {
     }
 }
 
-module.exports = KabulGame;
+module.exports = { KabulGame, CARD_VALUES, CARD_ABILITIES, ACTION_STATES };

@@ -50,20 +50,8 @@ const {
     serverTimestamp
 } = require('firebase/database');
 
-// Card definitions (must match KabulGame.js)
-const CARD_VALUES = {
-    'Joker': 0, 'A': 1,
-    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
-    '7': 7, '8': 8, '9': 9, '10': 10,
-    'J': 11, 'Q': 12, 'K': 13,
-};
-
-const CARD_ABILITIES = {
-    '7': 'PEEK_SELF', '8': 'PEEK_SELF',
-    '9': 'PEEK_ENEMY', '10': 'PEEK_ENEMY',
-    'J': 'BLIND_SWAP',
-    'Q': 'SEE_AND_SWAP', 'K': 'SEE_AND_SWAP',
-};
+// Import card definitions from KabulGame.js to avoid duplication
+const { CARD_VALUES, CARD_ABILITIES } = require('./KabulGame');
 
 // Turn phases
 const TURN_PHASE = {
@@ -700,7 +688,7 @@ class FirebaseService {
     }
 
     /**
-     * Step C: Player selects target card - REVEAL to player only, then wait for confirmation
+     * Step C: Player selects target card - REVEAL BOTH cards to player, then wait for confirmation
      */
     async _seeSwapReveal(roomId, playerId, targetIndex) {
         const gameStateRef = this._gameStateRef(roomId);
@@ -711,24 +699,33 @@ class FirebaseService {
         const targetSnap = await get(targetRef);
         const targetCard = targetSnap.val().hand[targetIndex];
 
-        const privateRef = this._privateRef(roomId, playerId);
-
-        // Reveal target card to active player ONLY via private node
-        await set(privateRef, {
-            revealedCard: {
-                position: targetIndex,
-                targetPlayerId: ability.targetPlayer,
-                rank: targetCard.rank,
-                suit: targetCard.suit,
-                value: targetCard.value,
-                display: targetCard.display,
-            },
-        });
-
-        // Also get own card for display
+        // Get own card for display
         const playerRef = this._playerRef(roomId, playerId);
         const playerSnap = await get(playerRef);
         const ownCard = playerSnap.val().hand[ability.ownCardIndex];
+
+        const privateRef = this._privateRef(roomId, playerId);
+
+        // Store BOTH cards in swapPreview for client to display
+        await set(privateRef, {
+            swapPreview: {
+                ownCard: {
+                    position: ability.ownCardIndex,
+                    rank: ownCard.rank,
+                    suit: ownCard.suit,
+                    value: ownCard.value,
+                    display: ownCard.display,
+                },
+                targetCard: {
+                    position: targetIndex,
+                    targetPlayerId: ability.targetPlayer,
+                    rank: targetCard.rank,
+                    suit: targetCard.suit,
+                    value: targetCard.value,
+                    display: targetCard.display,
+                },
+            },
+        });
 
         await update(gameStateRef, {
             'abilityState/targetCardIndex': targetIndex,
@@ -781,7 +778,7 @@ class FirebaseService {
         await Promise.all([
             update(playerRef, { hand: newPlayerHand }),
             update(targetRef, { hand: newTargetHand }),
-            set(privateRef, { revealedCard: null }),
+            set(privateRef, { swapPreview: null }),
             update(gameStateRef, {
                 turnPhase: TURN_PHASE.WAITING,
                 abilityState: null,
