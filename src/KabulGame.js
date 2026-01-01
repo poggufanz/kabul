@@ -21,7 +21,7 @@
 
 // ==================== CARD DEFINITIONS ====================
 
-const CARD_VALUES = {
+export const CARD_VALUES = {
     'Joker': 0,
     'A': 1,
     '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
@@ -31,7 +31,7 @@ const CARD_VALUES = {
     'K': 13,  // Black Kings; Red Kings handled separately
 };
 
-const CARD_ABILITIES = {
+export const CARD_ABILITIES = {
     '7': 'PEEK_SELF',
     '8': 'PEEK_SELF',
     '9': 'PEEK_ENEMY',
@@ -42,7 +42,7 @@ const CARD_ABILITIES = {
 };
 
 // Pending action states
-const ACTION_STATES = {
+export const ACTION_STATES = {
     CHOOSING_OWN_CARD_TO_PEEK: 'CHOOSING_OWN_CARD_TO_PEEK',
     CHOOSING_ENEMY_CARD_TO_PEEK: 'CHOOSING_ENEMY_CARD_TO_PEEK',
     SWAPPING_CARDS: 'SWAPPING_CARDS',
@@ -689,4 +689,8 @@ class KabulGame {
     }
 }
 
-module.exports = { KabulGame, CARD_VALUES, CARD_ABILITIES, ACTION_STATES };
+// Named exports
+export { KabulGame };
+
+// Default export for convenience
+export default KabulGame;

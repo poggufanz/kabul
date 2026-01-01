@@ -36,8 +36,8 @@
  *   Q/K  -> SEE_AND_SWAP (see then swap)
  */
 
-const { initializeApp } = require('firebase/app');
-const {
+import { initializeApp } from 'firebase/app';
+import {
     getDatabase,
     ref,
     set,
@@ -48,10 +48,10 @@ const {
     off,
     runTransaction,
     serverTimestamp
-} = require('firebase/database');
+} from 'firebase/database';
 
 // Import card definitions from KabulGame.js to avoid duplication
-const { CARD_VALUES, CARD_ABILITIES } = require('./KabulGame');
+import { CARD_VALUES, CARD_ABILITIES } from './KabulGame';
 
 // Turn phases
 const TURN_PHASE = {
@@ -86,6 +86,235 @@ class FirebaseService {
         this.db = getDatabase(this.app);
         this.listeners = new Map();
         this.currentPlayerId = null;
+    }
+
+    // ==================== ROOM MANAGEMENT ====================
+
+    /**
+     * List all available rooms
+     */
+    async listRooms() {
+        const snapshot = await get(ref(this.db, 'rooms'));
+        if (!snapshot.exists()) return [];
+
+        return Object.entries(snapshot.val()).map(([id, data]) => ({
+            id,
+            name: data.config?.name || `Room ${id.substr(0, 4)}`,
+            hostName: data.config?.hostName || 'Unknown',
+            playerCount: Object.keys(data.players || {}).length,
+            maxPlayers: 4,
+            isPrivate: data.config?.isPrivate || false,
+            status: data.gameState?.phase || 'WAITING',
+            players: Object.entries(data.players || {}).map(([pid, p]) => ({
+                id: pid,
+                name: p.name,
+                isHost: p.isHost,
+            })),
+        }));
+    }
+
+    /**
+     * Create a new room
+     */
+    async createRoom(roomName, hostId, hostName) {
+        const newRoomRef = push(ref(this.db, 'rooms'));
+        const roomId = newRoomRef.key;
+
+        // Generate initial deck
+        const deck = this._generateDeck();
+        this._shuffle(deck);
+
+        await set(newRoomRef, {
+            config: {
+                name: roomName,
+                hostId,
+                hostName,
+                createdAt: serverTimestamp(),
+            },
+            gameState: {
+                phase: 'WAITING',
+                currentTurn: null,
+                turnPhase: 'WAITING',
+                abilityState: null,
+                topDiscard: null,
+                deckCount: 54,
+                kabulCaller: null,
+                finalTurnsRemaining: null,
+                winner: null,
+            },
+            players: {
+                [hostId]: {
+                    name: hostName,
+                    isHost: true,
+                    hand: [],
+                    cardCount: 0,
+                    score: 0,
+                    hasCalledKabul: false,
+                },
+            },
+            deck: deck,
+            discardPile: [],
+            private: {},
+        });
+
+        return { success: true, roomId };
+    }
+
+    /**
+     * Join an existing room
+     */
+    async joinRoom(roomId, playerId, playerName) {
+        const roomRef = ref(this.db, `rooms/${roomId}`);
+        const snapshot = await get(roomRef);
+
+        if (!snapshot.exists()) {
+            throw new Error('Room not found');
+        }
+
+        const roomData = snapshot.val();
+        const playerCount = Object.keys(roomData.players || {}).length;
+
+        if (playerCount >= 4) {
+            throw new Error('Room is full');
+        }
+
+        if (roomData.gameState?.phase !== 'WAITING') {
+            throw new Error('Game already started');
+        }
+
+        await update(ref(this.db, `rooms/${roomId}/players/${playerId}`), {
+            name: playerName,
+            isHost: false,
+            hand: [],
+            cardCount: 0,
+            score: 0,
+            hasCalledKabul: false,
+        });
+
+        return { success: true };
+    }
+
+    /**
+     * Leave a room
+     */
+    async leaveRoom(roomId, playerId) {
+        const playerRef = ref(this.db, `rooms/${roomId}/players/${playerId}`);
+        await set(playerRef, null);
+        return { success: true };
+    }
+
+    /**
+     * Start the game (Host Only)
+     * Generates deck, shuffles, and deals 4 cards to each player
+     */
+    async startGame(roomId) {
+        const roomRef = ref(this.db, `rooms/${roomId}`);
+        const snapshot = await get(roomRef);
+
+        if (!snapshot.exists()) {
+            throw new Error('Room not found');
+        }
+
+        const roomData = snapshot.val();
+        const playerIds = Object.keys(roomData.players || {});
+
+        if (playerIds.length < 2) {
+            throw new Error('Need at least 2 players to start');
+        }
+
+        // Generate and shuffle new deck
+        const deck = this._generateDeck();
+        this._shuffle(deck);
+
+        const updates = {};
+
+        // Deal 4 cards to each player
+        playerIds.forEach((pid) => {
+            const hand = deck.splice(0, 4);
+            updates[`rooms/${roomId}/players/${pid}/hand`] = hand;
+            updates[`rooms/${roomId}/players/${pid}/cardCount`] = 4;
+        });
+
+        // Initial discard card
+        const firstDiscard = deck.shift();
+
+        // Update all game state
+        updates[`rooms/${roomId}/deck`] = deck;
+        updates[`rooms/${roomId}/discardPile`] = [firstDiscard];
+        updates[`rooms/${roomId}/gameState/phase`] = 'MEMORIZE';
+        updates[`rooms/${roomId}/gameState/turnPhase`] = 'WAITING';
+        updates[`rooms/${roomId}/gameState/currentTurn`] = playerIds[0];
+        updates[`rooms/${roomId}/gameState/topDiscard`] = firstDiscard;
+        updates[`rooms/${roomId}/gameState/deckCount`] = deck.length;
+
+        await update(ref(this.db), updates);
+
+        // After 3 seconds memorize phase, transition to PLAYING
+        setTimeout(async () => {
+            try {
+                await update(ref(this.db, `rooms/${roomId}/gameState`), {
+                    phase: 'PLAYING',
+                    turnPhase: TURN_PHASE.DRAWING,
+                });
+            } catch (err) {
+                console.error('Failed to transition to PLAYING:', err);
+            }
+        }, 3000);
+
+        return { success: true };
+    }
+
+    /**
+     * Generate a 54-card deck (52 + 2 Jokers)
+     * Card values follow Kabul rules:
+     * - Joker: 0 (best)
+     * - Red Kings (♥, ♦): -1 (very good)
+     * - Ace: 1
+     * - 2-10: face value
+     * - Jack: 11
+     * - Queen: 12
+     * - Black Kings (♠, ♣): 13 (worst)
+     */
+    _generateDeck() {
+        const deck = [];
+        const suits = ['♠', '♥', '♦', '♣'];
+        const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        for (const suit of suits) {
+            for (const rank of ranks) {
+                let value = CARD_VALUES[rank];
+
+                // Red Kings are -1 (override default K=13)
+                if (rank === 'K' && (suit === '♥' || suit === '♦')) {
+                    value = -1;
+                }
+
+                deck.push({
+                    rank,
+                    suit,
+                    value,
+                    display: `${rank}${suit}`,
+                    actionType: CARD_ABILITIES[rank] || 'NONE',
+                });
+            }
+        }
+
+        // Add 2 Jokers (value: 0)
+        deck.push({ rank: 'Joker', suit: null, value: 0, display: '🃏', actionType: 'NONE' });
+        deck.push({ rank: 'Joker', suit: null, value: 0, display: '🃏', actionType: 'NONE' });
+
+        return deck;
+    }
+
+    /**
+     * Fisher-Yates shuffle (proper randomization)
+     */
+    _shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
     }
 
     // ==================== REFERENCES ====================
@@ -994,4 +1223,5 @@ class FirebaseService {
     }
 }
 
-module.exports = { FirebaseService, ACTION, TURN_PHASE };
+export { ACTION, TURN_PHASE };
+export default FirebaseService;
