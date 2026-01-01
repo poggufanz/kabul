@@ -4,13 +4,24 @@ import { GameLobby, RulesModal } from '../components';
 import { usePlayer } from '../App';
 import FirebaseService from '../FirebaseService';
 
-// Firebase config - uses Vite env variables
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+
+// Your web app's Firebase configuration
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'your-api-key',
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'your-project.firebaseapp.com',
-    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://your-project.firebaseio.com',
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'your-project-id',
+    apiKey: "AIzaSyBqAAOhCbNZ1Fy8CU5u5iZcOJ3wFVcEFqw",
+    authDomain: "mlt-id.firebaseapp.com",
+    databaseURL: "https://mlt-id-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "mlt-id",
+    storageBucket: "mlt-id.firebasestorage.app",
+    messagingSenderId: "6709876343",
+    appId: "1:6709876343:web:7b270282b3095af36ed872",
+    measurementId: "G-8YP9BT18XJ"
 };
+
+// Initialize Firebase
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 
 // Singleton Firebase service
 let firebaseService = null;
