@@ -162,6 +162,9 @@ const GameRoomPage = () => {
     // ==================== VOICE RECOGNITION ====================
 
     useEffect(() => {
+        // DISABLED: Voice recognition feature temporarily disabled
+        return;
+
         // Check if Web Speech API is available
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {

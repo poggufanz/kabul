@@ -3,17 +3,7 @@
         "rooms": {
             "$roomId": {
                 ".read": true,
-                ".write": true,
-                "deck": {
-                    ".read": false,
-                    ".write": true
-                },
-                "private": {
-                    "$playerId": {
-                        ".read": "auth != null && auth.uid == $playerId",
-                        ".write": "auth != null && auth.uid == $playerId"
-                    }
-                }
+                ".write": true
             }
         }
     }

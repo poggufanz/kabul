@@ -402,13 +402,17 @@ class FirebaseService {
      * Mask other players' hands
      */
     _maskPlayers(players, myPlayerId) {
+        if (!players) return {};
+
         const masked = {};
         for (const [pid, player] of Object.entries(players)) {
+            const playerHand = player.hand || [];
             masked[pid] = {
                 ...player,
                 hand: pid === myPlayerId
-                    ? player.hand
-                    : player.hand.map(() => ({ hidden: true })),
+                    ? playerHand
+                    : playerHand.map(() => ({ hidden: true })),
+                cardCount: playerHand.length,
             };
         }
         return masked;
@@ -462,20 +466,15 @@ class FirebaseService {
         const gameStateRef = this._gameStateRef(roomId);
         const privateRef = this._privateRef(roomId, playerId);
 
-        // Use transaction to prevent race conditions
-        const result = await runTransaction(deckRef, (deck) => {
-            if (!deck || deck.length === 0) {
-                return; // Abort - deck empty
-            }
-            // Remove top card
-            return deck;
-        });
+        // Get current deck state first
+        const deckSnapshot = await get(deckRef);
+        const deckData = deckSnapshot.val();
 
-        if (!result.committed) {
+        if (!deckData || deckData.length === 0) {
             throw new Error('Deck is empty');
         }
 
-        // Get fresh state
+        // Get fresh game state
         const gameStateSnapshot = await get(gameStateRef);
         const gameState = gameStateSnapshot.val();
 
@@ -489,39 +488,44 @@ class FirebaseService {
 
         let drawnCard;
         if (source === 'deck') {
-            // Transaction: pop from deck
-            const deckTxResult = await runTransaction(deckRef, (deck) => {
-                if (!deck || deck.length === 0) return;
-                drawnCard = deck.shift();
-                return deck;
-            });
+            // Simple get/set approach - no transaction issues
+            const deckSnapshot = await get(deckRef);
+            const deck = deckSnapshot.val();
 
-            if (!deckTxResult.committed) {
-                throw new Error('Failed to draw from deck');
+            if (!deck || deck.length === 0) {
+                throw new Error('Deck is empty after validation');
             }
+
+            // Draw top card
+            drawnCard = deck.shift();
+
+            // Update deck in Firebase
+            await set(deckRef, deck);
 
             // Update deck count
             await update(gameStateRef, {
-                deckCount: deckTxResult.snapshot.val()?.length || 0,
+                deckCount: deck.length,
                 turnPhase: TURN_PHASE.DISCARDING,
             });
         } else {
-            // Draw from discard
+            // Draw from discard pile - simple get/set
             const discardRef = this._discardRef(roomId);
-            const discardTxResult = await runTransaction(discardRef, (pile) => {
-                if (!pile || pile.length === 0) return;
-                drawnCard = pile.pop();
-                return pile;
-            });
+            const discardSnapshot = await get(discardRef);
+            const pile = discardSnapshot.val();
 
-            if (!discardTxResult.committed) {
+            if (!pile || pile.length === 0) {
                 throw new Error('Discard pile is empty');
             }
 
-            // Update top discard
-            const newPile = discardTxResult.snapshot.val() || [];
+            // Pop top card
+            drawnCard = pile.pop();
+
+            // Update discard pile
+            await set(discardRef, pile);
+
+            // Update top discard in game state
             await update(gameStateRef, {
-                topDiscard: newPile[newPile.length - 1] || null,
+                topDiscard: pile.length > 0 ? pile[pile.length - 1] : null,
                 turnPhase: TURN_PHASE.DISCARDING,
             });
         }
@@ -1025,66 +1029,60 @@ class FirebaseService {
         const discardRef = this._discardRef(roomId);
         const deckRef = this._deckRef(roomId);
 
-        // Use transaction to handle race condition
-        const result = await runTransaction(discardRef, async (pile) => {
-            if (!pile || pile.length === 0) return pile;
+        // Get current state
+        const playerSnap = await get(playerRef);
+        const player = playerSnap.val();
+        const card = player.hand[handIndex];
 
-            // Get player's card
-            const playerSnap = await get(playerRef);
-            const player = playerSnap.val();
-            const card = player.hand[handIndex];
+        if (!card) {
+            throw new Error('Card not found');
+        }
 
-            const topCard = pile[pile.length - 1];
+        const discardSnap = await get(discardRef);
+        const pile = discardSnap.val() || [];
+        const topCard = pile[pile.length - 1];
 
-            if (card.rank === topCard.rank) {
-                // Match! Add card to pile
-                pile.push(card);
-                return pile;
-            }
+        if (!topCard) {
+            throw new Error('Discard pile is empty');
+        }
 
-            // No match - don't modify pile
-            return undefined; // Abort transaction
-        });
-
-        if (result.committed) {
-            // Success - remove card from hand
-            const playerSnap = await get(playerRef);
-            const player = playerSnap.val();
+        // Check if cards match
+        if (card.rank === topCard.rank) {
+            // SUCCESS: Remove card from hand, add to discard
             const newHand = [...player.hand];
             const removedCard = newHand.splice(handIndex, 1)[0];
 
+            // Update discard pile
+            pile.push(removedCard);
+            await set(discardRef, pile);
+
+            // Update player hand
             await update(playerRef, { hand: newHand, cardCount: newHand.length });
+
+            // Update top discard in game state
             await update(gameStateRef, { topDiscard: removedCard });
 
-            return { success: true, message: 'Match! Card removed.' };
+            return { success: true, message: `Match! Removed ${removedCard.rank}` };
         } else {
-            // Failed match - add penalty card
-            const penaltyResult = await runTransaction(deckRef, (deck) => {
-                if (!deck || deck.length === 0) return deck;
-                return deck; // We'll pop after
-            });
+            // FAIL: Draw penalty card from deck
+            const deckSnap = await get(deckRef);
+            const deck = deckSnap.val() || [];
 
-            if (penaltyResult.committed && penaltyResult.snapshot.val()?.length > 0) {
-                const deckTx = await runTransaction(deckRef, (deck) => {
-                    if (!deck || deck.length === 0) return deck;
-                    deck.shift(); // Remove penalty card
-                    return deck;
-                });
+            if (deck.length > 0) {
+                const penaltyCard = deck.shift();
 
-                // Add penalty to player hand
-                const deckSnap = await get(deckRef);
-                const deck = deckSnap.val() || [];
-                const penalty = penaltyResult.snapshot.val()[0]; // Get the removed card
-
-                const playerSnap = await get(playerRef);
-                const player = playerSnap.val();
-                const newHand = [...player.hand, penalty];
-
+                // Add penalty card to player's hand
+                const newHand = [...player.hand, penaltyCard];
                 await update(playerRef, { hand: newHand, cardCount: newHand.length });
-                await update(gameStateRef, { deckCount: deck.length });
-            }
 
-            return { success: false, message: 'Wrong! +1 card penalty.' };
+                // Update deck
+                await set(deckRef, deck);
+                await update(gameStateRef, { deckCount: deck.length });
+
+                return { success: false, message: `Wrong! +1 card (${penaltyCard.rank})` };
+            } else {
+                return { success: false, message: 'Wrong! No penalty (deck empty)' };
+            }
         }
     }
 
