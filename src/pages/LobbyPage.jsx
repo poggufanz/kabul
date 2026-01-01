@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GameLobby, RulesModal } from '../components';
+import { GameLobby, RulesModal, CreateGameModal } from '../components';
 import { usePlayer } from '../App';
 import FirebaseService from '../FirebaseService';
 
@@ -41,6 +41,7 @@ const LobbyPage = () => {
     const [selectedRoomId, setSelectedRoomId] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showRules, setShowRules] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [error, setError] = useState(null);
 
     const firebase = getFirebaseService();
@@ -68,13 +69,11 @@ const LobbyPage = () => {
     }, []);
 
     // Create new room
-    const handleCreateRoom = async () => {
+    const handleCreateRoom = async ({ roomName, costume }) => {
         try {
-            const roomName = prompt('Enter room name:', `${player.name}'s Game`);
-            if (!roomName) return;
-
-            const result = await firebase.createRoom(roomName, player.id, player.name);
+            const result = await firebase.createRoom(roomName, player.id, player.name, costume);
             if (result.roomId) {
+                setShowCreateModal(false);
                 navigate(`/room/${result.roomId}`);
             }
         } catch (err) {
@@ -135,12 +134,18 @@ const LobbyPage = () => {
                 selectedRoomId={selectedRoomId}
                 onSelectRoom={handleSelectRoom}
                 onJoinRoom={handleJoinRoom}
-                onCreateRoom={handleCreateRoom}
+                onCreateRoom={() => setShowCreateModal(true)}
                 onOpenRules={() => setShowRules(true)}
             />
             <RulesModal
                 isOpen={showRules}
                 onClose={() => setShowRules(false)}
+            />
+            <CreateGameModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onCreate={handleCreateRoom}
+                playerName={player.name}
             />
         </>
     );

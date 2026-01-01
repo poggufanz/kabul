@@ -146,25 +146,46 @@ class GameLogic {
         return false;
     }
 
+    /* ---------- Costume Presets ---------- */
+
+    static COSTUMES = {
+        COSTUME_1: {
+            name: 'Classic',
+            description: 'Joker: -1, Red Kings: 0',
+            jokerValue: -1,
+            redKingValue: 0,
+        },
+        COSTUME_2: {
+            name: 'Reversed',
+            description: 'Joker: 0, Red Kings: -1',
+            jokerValue: 0,
+            redKingValue: -1,
+        },
+    };
+
     /* ---------- Scoring ---------- */
 
     /**
      * Compute the total point value of a hand based on Kabul rules.
      * @param {string[]} hand - Array of 4 card strings.
+     * @param {string} [costumeKey='COSTUME_1'] - Which costume preset to use.
      * @returns {number}
      */
-    static computeHandValue(hand) {
-        return hand.reduce((sum, card) => sum + GameLogic.cardValue(card), 0);
+    static computeHandValue(hand, costumeKey = 'COSTUME_1') {
+        return hand.reduce((sum, card) => sum + GameLogic.cardValue(card, costumeKey), 0);
     }
 
     /**
      * Get the numeric value of a single card.
      * @param {string} card
+     * @param {string} [costumeKey='COSTUME_1'] - Which costume preset to use.
      * @returns {number}
      */
-    static cardValue(card) {
-        if (card === "Joker") return -1;
-        if (card === "Red King") return 0;
+    static cardValue(card, costumeKey = 'COSTUME_1') {
+        const costume = GameLogic.COSTUMES[costumeKey] || GameLogic.COSTUMES.COSTUME_1;
+
+        if (card === "Joker") return costume.jokerValue;
+        if (card === "Red King") return costume.redKingValue;
         // Aces
         if (card.startsWith("A")) return 1;
         // K, Q, J have face value 10 (but K♠/K♣ are not Red Kings, treat as 13)

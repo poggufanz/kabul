@@ -51,7 +51,7 @@ import {
 } from 'firebase/database';
 
 // Import card definitions from KabulGame.js to avoid duplication
-import { CARD_VALUES, CARD_ABILITIES } from './KabulGame';
+import { CARD_VALUES, CARD_ABILITIES, COSTUMES } from './KabulGame';
 
 // Turn phases
 const TURN_PHASE = {
@@ -115,13 +115,20 @@ class FirebaseService {
 
     /**
      * Create a new room
+     * @param {string} roomName 
+     * @param {string} hostId 
+     * @param {string} hostName 
+     * @param {string} costume - 'COSTUME_1' or 'COSTUME_2'
      */
-    async createRoom(roomName, hostId, hostName) {
+    async createRoom(roomName, hostId, hostName, costume = 'COSTUME_1') {
         const newRoomRef = push(ref(this.db, 'rooms'));
         const roomId = newRoomRef.key;
 
-        // Generate initial deck
-        const deck = this._generateDeck();
+        // Validate costume
+        const validCostume = COSTUMES[costume] ? costume : 'COSTUME_1';
+
+        // Generate initial deck with costume configuration
+        const deck = this._generateDeck(validCostume);
         this._shuffle(deck);
 
         await set(newRoomRef, {
@@ -129,6 +136,7 @@ class FirebaseService {
                 name: roomName,
                 hostId,
                 hostName,
+                costume: validCostume,
                 createdAt: serverTimestamp(),
             },
             gameState: {
@@ -222,8 +230,11 @@ class FirebaseService {
             throw new Error('Need at least 2 players to start');
         }
 
-        // Generate and shuffle new deck
-        const deck = this._generateDeck();
+        // Get costume from room config
+        const costume = roomData.config?.costume || 'COSTUME_1';
+
+        // Generate and shuffle new deck with costume configuration
+        const deck = this._generateDeck(costume);
         this._shuffle(deck);
 
         const updates = {};
@@ -266,16 +277,13 @@ class FirebaseService {
 
     /**
      * Generate a 54-card deck (52 + 2 Jokers)
-     * Card values follow Kabul rules:
-     * - Joker: 0 (best)
-     * - Red Kings (♥, ♦): -1 (very good)
-     * - Ace: 1
-     * - 2-10: face value
-     * - Jack: 11
-     * - Queen: 12
-     * - Black Kings (♠, ♣): 13 (worst)
+     * Card values depend on costume configuration:
+     * - COSTUME_1: Joker = -1, Red Kings = 0
+     * - COSTUME_2: Joker = 0, Red Kings = -1
+     * @param {string} costumeKey - 'COSTUME_1' or 'COSTUME_2'
      */
-    _generateDeck() {
+    _generateDeck(costumeKey = 'COSTUME_1') {
+        const costume = COSTUMES[costumeKey] || COSTUMES.COSTUME_1;
         const deck = [];
         const suits = ['♠', '♥', '♦', '♣'];
         const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -284,9 +292,9 @@ class FirebaseService {
             for (const rank of ranks) {
                 let value = CARD_VALUES[rank];
 
-                // Red Kings are -1 (override default K=13)
+                // Red Kings use costume configuration
                 if (rank === 'K' && (suit === '♥' || suit === '♦')) {
-                    value = -1;
+                    value = costume.redKingValue;
                 }
 
                 deck.push({
@@ -299,9 +307,9 @@ class FirebaseService {
             }
         }
 
-        // Add 2 Jokers (value: 0)
-        deck.push({ rank: 'Joker', suit: null, value: 0, display: '🃏', actionType: 'NONE' });
-        deck.push({ rank: 'Joker', suit: null, value: 0, display: '🃏', actionType: 'NONE' });
+        // Add 2 Jokers with costume value
+        deck.push({ rank: 'Joker', suit: null, value: costume.jokerValue, display: '🃏', actionType: 'NONE' });
+        deck.push({ rank: 'Joker', suit: null, value: costume.jokerValue, display: '🃏', actionType: 'NONE' });
 
         return deck;
     }
