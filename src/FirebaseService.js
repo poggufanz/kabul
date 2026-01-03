@@ -214,8 +214,10 @@ class FirebaseService {
     /**
      * Start the game (Host Only)
      * Generates deck, shuffles, and deals 4 cards to each player
+     * @param {string} roomId
+     * @param {string} playerId - The player attempting to start the game
      */
-    async startGame(roomId) {
+    async startGame(roomId, playerId) {
         const roomRef = ref(this.db, `rooms/${roomId}`);
         const snapshot = await get(roomRef);
 
@@ -224,6 +226,12 @@ class FirebaseService {
         }
 
         const roomData = snapshot.val();
+
+        // Validate that the player is the host
+        if (roomData.config?.hostId !== playerId) {
+            throw new Error('Only the host can start the game');
+        }
+
         const playerIds = Object.keys(roomData.players || {});
 
         if (playerIds.length < 2) {
@@ -361,11 +369,8 @@ class FirebaseService {
     listenToRoom(roomId, playerId, callback) {
         this.currentPlayerId = playerId;
 
-        // Listen to public game state
-        const gameStateRef = this._gameStateRef(roomId);
-        const gameStateListener = onValue(gameStateRef, async (snapshot) => {
-            const gameState = snapshot.val();
-
+        // Helper function to fetch and emit current state
+        const emitCurrentState = async (gameState) => {
             // Get all players public info
             const playersSnapshot = await get(ref(this.db, `rooms/${roomId}/players`));
             const players = playersSnapshot.val() || {};
@@ -383,6 +388,25 @@ class FirebaseService {
                 myHand,
                 myPrivate,
             });
+        };
+
+        // Store latest gameState for players listener
+        let latestGameState = null;
+
+        // Listen to public game state
+        const gameStateRef = this._gameStateRef(roomId);
+        const gameStateListener = onValue(gameStateRef, async (snapshot) => {
+            latestGameState = snapshot.val();
+            await emitCurrentState(latestGameState);
+        });
+
+        // Listen to players changes (for realtime join/leave updates)
+        const playersRef = ref(this.db, `rooms/${roomId}/players`);
+        const playersListener = onValue(playersRef, async (snapshot) => {
+            // Re-emit state when players change
+            if (latestGameState !== null) {
+                await emitCurrentState(latestGameState);
+            }
         });
 
         // Listen to my private data
@@ -391,7 +415,7 @@ class FirebaseService {
             // Private data updated - will be included in next gameState callback
         });
 
-        this.listeners.set(roomId, { gameStateListener, privateListener, gameStateRef, privateRef });
+        this.listeners.set(roomId, { gameStateListener, playersListener, privateListener, gameStateRef, playersRef, privateRef });
     }
 
     /**
@@ -401,6 +425,7 @@ class FirebaseService {
         const listener = this.listeners.get(roomId);
         if (listener) {
             off(listener.gameStateRef);
+            if (listener.playersRef) off(listener.playersRef);
             off(listener.privateRef);
             this.listeners.delete(roomId);
         }

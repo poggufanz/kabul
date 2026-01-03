@@ -266,6 +266,7 @@ const GameRoomPage = () => {
     // Waiting for game to start
     if (gameState?.phase === 'WAITING') {
         const playerList = Object.values(players);
+        const isHost = players[player.id]?.isHost === true;
         return (
             <div className="flex-1 flex items-center justify-center p-4">
                 <div className="bg-surface-light dark:bg-[#1c2630] rounded-2xl p-8 max-w-md w-full text-center border border-[#283039]">
@@ -281,17 +282,24 @@ const GameRoomPage = () => {
                             >
                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                 {p.name}
+                                {p.isHost && <span className="text-yellow-400 text-xs">(Host)</span>}
                             </div>
                         ))}
                     </div>
 
-                    {playerList.length >= 2 && (
-                        <button
-                            onClick={() => firebase.startGame(roomId)}
-                            className="bg-primary hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
-                        >
-                            Start Game
-                        </button>
+                    {isHost ? (
+                        playerList.length >= 2 ? (
+                            <button
+                                onClick={() => firebase.startGame(roomId, player.id)}
+                                className="bg-primary hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg"
+                            >
+                                Start Game
+                            </button>
+                        ) : (
+                            <p className="text-white/40 text-sm">Need at least 2 players to start</p>
+                        )
+                    ) : (
+                        <p className="text-white/40 text-sm">Waiting for host to start the game...</p>
                     )}
                 </div>
             </div>
